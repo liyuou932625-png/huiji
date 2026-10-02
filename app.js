@@ -425,11 +425,14 @@ async function aiSummarize({ silent = false } = {}) {
   }
 }
 
-/* 录音结束后自动整理全文 + 生成总结 */
+/* 录音结束后自动整理全文 + 生成总结（无 AI 时退回规则，提示只弹一次） */
 function maybeAutoAi() {
   if (!state.settings.aiAuto || ai.busy || !state.transcript.length) return;
   if (!ai.available) {
-    showToast("本机 AI 未连接，已用规则整理；设置里可「检测 AI」");
+    if (!maybeAutoAi.hinted) {
+      maybeAutoAi.hinted = true;
+      showToast("本机 AI 未连接，已用规则整理全文（无需大模型）");
+    }
     state.fullText = fallbackPunctuate(rawFullText());
     renderFullText();
     return;

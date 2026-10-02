@@ -32,6 +32,19 @@ python3 -m http.server 8000 --directory .
 > 提示：默认模型 `qwen2.5:3b-instruct` 在纯 CPU 上约 15-25 token/s；追求更好效果可在设置里换成 `qwen2.5:7b`（更慢）。
 > 手机浏览器打开时（非 localhost）无法访问本机 Ollama，会自动退回本地规则整理。
 
+## 手机版（可安装 App，无需大模型）
+
+用 cloudflared 免费隧道给本页开一条公网 HTTPS 地址，手机直接打开、加到主屏幕即可当 App 用（录音/转写/保存/导出全部可用；无 AI 时自动用规则断句 + 启发式总结）。
+
+```bash
+# 一键启动：本地网页 + 公网隧道，打印手机地址和二维码
+./phone.sh
+```
+
+- 手机浏览器打开打印出的 `https://xxx.trycloudflare.com` → 菜单里「添加到主屏幕」（iOS Safari：分享→添加到主屏幕；Android Chrome：右上角菜单→安装应用/添加到主屏幕）
+- 生成二维码：`tools/phone-qr.png`（脚本每次运行都会刷新）
+- 注意：免费隧道的地址是**临时的**，`cloudflared` 一重启地址就变（重新跑 `./phone.sh` 拿新地址）。要长期固定地址，把本目录部署到 GitHub Pages / Netlify / Vercel 即可（部署版自动无 AI、用规则整理）。
+
 ## 发布
 
 这是静态网页项目，可直接部署到 GitHub Pages、Netlify 或 Vercel（部署版不带本机 AI，AI 功能需通过 localhost 使用）。

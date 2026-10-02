@@ -6,6 +6,5 @@ ollama-runtime/serve.log
 ollama-runtime/*.zst
 ollama-runtime/*.gguf
 
-# 杂项
-.DS_Store
-*.log
+# 手机版隧道工具与临时文件（cloudflared 二进制 + 动态 URL 二维码）
+tools/
