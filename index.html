@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#315efb">
+    <meta name="description" content="录音、实时转写和整理会议重点">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <link rel="stylesheet" href="styles.css">
+    <title>会记</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">M</span><span>会记</span></div>
+        <div class="topbar-actions">
+          <button class="icon-button" id="darkToggle" aria-label="切换深色模式">☾</button>
+          <button class="icon-button" id="installButton" aria-label="安装到手机" hidden>↓</button>
+        </div>
+      </header>
+      <main>
+        <section class="hero">
+          <div><p class="eyebrow">MEETING NOTES</p><h1>把每一句话，<br><em>变成清晰行动。</em></h1><p class="hero-copy">录下来，整理成可读的会议记录。</p></div>
+          <div class="date-stamp" id="dateStamp"></div>
+        </section>
+        <section class="recorder-panel">
+          <div class="section-heading"><div><p class="eyebrow">NEW SESSION</p><h2>开始一场会议</h2></div><span class="status-dot" id="recordStatus"><span></span>待开始</span></div>
+          <label class="title-row">
+            <span class="title-label">会议标题</span>
+            <input id="meetingTitle" maxlength="40" placeholder="给这次会议起个名字">
+          </label>
+          <div class="recorder-main">
+            <div class="waveform" id="waveform" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="record-time" id="recordTime">00:00</div>
+            <button class="record-button" id="recordButton"><span class="record-icon"></span><span id="recordButtonLabel">开始录音</span></button>
+          </div>
+          <p class="helper-text" id="recordHint">需要 HTTPS 和麦克风权限，录音与文字都只保存在本设备。</p>
+          <div class="audio-result" id="audioResult" hidden>
+            <audio id="audioPreview" controls></audio>
+            <a class="audio-download" id="audioDownload" download="会议录音.webm">下载录音</a>
+          </div>
+        </section>
+        <section class="summary-section">
+          <div class="section-heading"><div><p class="eyebrow">AT A GLANCE</p><h2>会议重点</h2></div><button class="text-button" id="copySummaryButton">复制重点</button></div>
+          <div class="summary-grid">
+            <article class="summary-card primary-card"><span class="card-label">一句话总结</span><p id="oneLineSummary">等待会议内容</p></article>
+            <article class="summary-card"><span class="card-label">行动项</span><ul id="actionList"><li class="empty-state">暂无行动项</li></ul></article>
+          </div>
+          <div class="key-points" id="keyPoints"><div class="empty-state">录音结束后，这里会出现会议重点。</div></div>
+          <div class="summary-actions" id="exportButtons" hidden>
+            <button class="outline-button" id="imageButton" disabled>生成重点图片</button>
+            <button class="outline-button" id="exportMdButton">导出 Markdown</button>
+            <button class="outline-button" id="exportTxtButton">导出 TXT</button>
+          </div>
+        </section>
+        <section class="transcript-section">
+          <div class="section-heading"><div><p class="eyebrow">LIVE TRANSCRIPT</p><h2>文字记录</h2></div><span class="speaker-count" id="speakerCount">0 位发言人</span></div>
+          <div class="speaker-toolbar"><button class="small-button" id="speakerButton">切换发言人</button><span id="activeSpeakerLabel">当前：人物 1</span><span class="interim-hint">边说边出字</span></div>
+          <div class="transcript-list" id="transcriptList"><div class="empty-transcript"><span class="empty-icon">◌</span><p>开始录音后，文字会实时显示在这里</p></div></div>
+          <div class="transcript-footer"><button class="text-button" id="copyTranscriptButton">复制全文</button><button class="text-button muted" id="clearButton">清空本次</button></div>
+        </section>
+      </main>
+      <nav class="bottom-nav">
+        <button class="nav-item active" id="recordNav"><span>⌂</span><small>记录</small></button>
+        <button class="nav-item" id="historyButton"><span>◷</span><small>历史</small></button>
+        <button class="nav-item" id="settingsButton"><span>⚙</span><small>设置</small></button>
+      </nav>
+    </div>
+    <div class="toast" id="toast" role="status"></div>
+
+    <!-- 重点图片 -->
+    <div class="modal-backdrop" id="imageModal" hidden>
+      <div class="image-modal" role="dialog" aria-modal="true">
+        <div class="modal-heading"><div><p class="eyebrow">SHARE CARD</p><h2>重点图片</h2></div><button class="icon-button" id="closeModalButton">×</button></div>
+        <canvas id="shareCanvas" width="1080" height="1350"></canvas>
+        <a class="download-button" id="downloadImageButton" download="会议重点.png">↓ 保存图片</a>
+      </div>
+    </div>
+
+    <!-- 历史列表 -->
+    <div class="modal-backdrop" id="historyModal" hidden>
+      <div class="sheet" role="dialog" aria-modal="true">
+        <div class="modal-heading"><div><p class="eyebrow">ARCHIVE</p><h2>历史会议</h2></div><button class="icon-button close-sheet">×</button></div>
+        <div id="historyList" class="history-list"></div>
+      </div>
+    </div>
+
+    <!-- 历史详情 -->
+    <div class="modal-backdrop" id="historyDetailModal" hidden>
+      <div class="sheet detail-sheet" role="dialog" aria-modal="true">
+        <div class="modal-heading">
+          <div><p class="eyebrow">RECORD</p><h2 id="detailTitle">会议记录</h2></div>
+          <button class="icon-button" id="detailClose">×</button>
+        </div>
+        <p class="detail-meta" id="detailMeta"></p>
+        <div class="detail-block">
+          <p class="detail-label">重点总结</p>
+          <div id="detailSummary"><p class="empty-state">无总结</p></div>
+        </div>
+        <div class="detail-block" id="detailAudioWrap" hidden>
+          <p class="detail-label">录音回放</p>
+          <audio id="detailAudio" controls></audio>
+          <a class="audio-download" id="detailAudioDownload" download="录音.webm">下载录音</a>
+        </div>
+        <div class="detail-block">
+          <p class="detail-label">完整文字</p>
+          <div id="detailTranscript" class="detail-transcript"><p class="empty-state">无文字记录</p></div>
+        </div>
+        <div class="detail-actions">
+          <button class="outline-button" id="detailExportMd">导出 MD</button>
+          <button class="outline-button" id="detailExportTxt">导出 TXT</button>
+          <button class="outline-button" id="detailLoad">载入编辑</button>
+          <button class="outline-button danger" id="detailDelete">删除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 设置 -->
+    <div class="modal-backdrop" id="settingsModal" hidden>
+      <div class="sheet" role="dialog" aria-modal="true">
+        <div class="modal-heading"><div><p class="eyebrow">PREFERENCES</p><h2>设置</h2></div><button class="icon-button close-sheet">×</button></div>
+        <label class="setting-row"><span>默认发言人名称</span><input id="speakerNameInput" value="人物 1" maxlength="12"></label>
+        <label class="setting-row"><span>识别语言</span><select id="languageSelect"><option value="zh-CN">普通话</option><option value="en-US">English</option><option value="yue-Hant-HK">粤语</option></select></label>
+        <label class="setting-row"><span>自动保存历史</span><input id="autoSaveInput" type="checkbox" checked></label>
+        <p class="settings-note">录音和会议记录只保存在本设备（IndexedDB）。多人声纹识别需要后端模型，当前用人工标注发言人。</p>
+        <button class="primary-button" id="saveSettingsButton">保存设置</button>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
