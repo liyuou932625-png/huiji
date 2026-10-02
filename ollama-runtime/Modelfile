@@ -1,0 +1,16 @@
+FROM ./qwen2.5-3b-instruct-q4_k_m.gguf
+
+TEMPLATE """{{- if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{- end }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+<|im_start|>assistant
+"""
+
+SYSTEM """你是「会记」会议记录助手，用简洁中文输出。"""
+
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+PARAMETER temperature 0.3
+PARAMETER num_ctx 32768
+PARAMETER num_thread 10

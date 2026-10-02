@@ -1,0 +1,11 @@
+# 本地 AI 运行时（大文件，不入库）：绿色版 Ollama 二进制 + 模型
+ollama-runtime/bin/
+ollama-runtime/lib/
+ollama-runtime/models/
+ollama-runtime/serve.log
+ollama-runtime/*.zst
+ollama-runtime/*.gguf
+
+# 杂项
+.DS_Store
+*.log

@@ -42,7 +42,7 @@
           </div>
         </section>
         <section class="summary-section">
-          <div class="section-heading"><div><p class="eyebrow">AT A GLANCE</p><h2>会议重点</h2></div><button class="text-button" id="copySummaryButton">复制重点</button></div>
+          <div class="section-heading"><div><p class="eyebrow">AT A GLANCE</p><h2>会议重点</h2><span class="ai-badge" id="aiBadge" hidden>AI</span></div><div class="heading-actions"><button class="text-button" id="aiSummaryButton" disabled>AI 总结</button><button class="text-button" id="copySummaryButton">复制重点</button></div></div>
           <div class="summary-grid">
             <article class="summary-card primary-card"><span class="card-label">一句话总结</span><p id="oneLineSummary">等待会议内容</p></article>
             <article class="summary-card"><span class="card-label">行动项</span><ul id="actionList"><li class="empty-state">暂无行动项</li></ul></article>
@@ -54,11 +54,16 @@
             <button class="outline-button" id="exportTxtButton">导出 TXT</button>
           </div>
         </section>
+        <section class="fulltext-section">
+          <div class="section-heading"><div><p class="eyebrow">FULL TEXT</p><h2>会议全文</h2></div><span class="ai-status-chip" id="aiStatus">AI 未连接</span></div>
+          <div class="fulltext-block" id="fullTextBlock">还没有整理后的全文。录音结束后点「AI 整理全文」：自动加标点、去口语填充词；本机没接 AI 时用规则整理。</div>
+          <div class="transcript-footer"><button class="text-button" id="aiPunctuateButton" disabled>AI 整理全文</button><button class="text-button" id="copyFullTextButton" disabled>复制全文</button></div>
+        </section>
         <section class="transcript-section">
           <div class="section-heading"><div><p class="eyebrow">LIVE TRANSCRIPT</p><h2>文字记录</h2></div><span class="speaker-count" id="speakerCount">0 位发言人</span></div>
           <div class="speaker-toolbar"><button class="small-button" id="speakerButton">切换发言人</button><span id="activeSpeakerLabel">当前：人物 1</span><span class="interim-hint">边说边出字</span></div>
           <div class="transcript-list" id="transcriptList"><div class="empty-transcript"><span class="empty-icon">◌</span><p>开始录音后，文字会实时显示在这里</p></div></div>
-          <div class="transcript-footer"><button class="text-button" id="copyTranscriptButton">复制全文</button><button class="text-button muted" id="clearButton">清空本次</button></div>
+          <div class="transcript-footer"><button class="text-button" id="copyTranscriptButton">复制逐条</button><button class="text-button muted" id="clearButton">清空本次</button></div>
         </section>
       </main>
       <nav class="bottom-nav">
@@ -104,7 +109,11 @@
           <a class="audio-download" id="detailAudioDownload" download="录音.webm">下载录音</a>
         </div>
         <div class="detail-block">
-          <p class="detail-label">完整文字</p>
+          <p class="detail-label">完整文字（整理后）</p>
+          <div id="detailFullText" class="detail-transcript"><p class="empty-state">无</p></div>
+        </div>
+        <div class="detail-block">
+          <p class="detail-label">逐条记录</p>
           <div id="detailTranscript" class="detail-transcript"><p class="empty-state">无文字记录</p></div>
         </div>
         <div class="detail-actions">
@@ -123,7 +132,13 @@
         <label class="setting-row"><span>默认发言人名称</span><input id="speakerNameInput" value="人物 1" maxlength="12"></label>
         <label class="setting-row"><span>识别语言</span><select id="languageSelect"><option value="zh-CN">普通话</option><option value="en-US">English</option><option value="yue-Hant-HK">粤语</option></select></label>
         <label class="setting-row"><span>自动保存历史</span><input id="autoSaveInput" type="checkbox" checked></label>
-        <p class="settings-note">录音和会议记录只保存在本设备（IndexedDB）。多人声纹识别需要后端模型，当前用人工标注发言人。</p>
+        <p class="settings-label">本地 AI（本机算力）</p>
+        <label class="setting-row"><span>AI 状态</span><span class="ai-status" id="aiStatusLine">未检测</span></label>
+        <label class="setting-row"><span>Ollama 地址</span><input id="aiUrlInput" value="http://localhost:11434" spellcheck="false" placeholder="http://localhost:11434"></label>
+        <label class="setting-row"><span>模型</span><input id="aiModelInput" list="aiModelList" value="qwen2.5:3b-instruct" spellcheck="false"><datalist id="aiModelList"><option value="qwen2.5:3b-instruct"><option value="qwen2.5:7b"><option value="qwen2.5:1.5b"><option value="llama3.2:3b"></datalist></label>
+        <label class="setting-row"><span>录音后自动 AI 总结</span><input id="aiAutoInput" type="checkbox" checked></label>
+        <label class="setting-row"><span>重新检测</span><button class="small-button" id="aiCheckButton">检测 AI</button></label>
+        <p class="settings-note">AI 用本机 Ollama 的算力，数据不出本机。需安装并启动 Ollama（终端运行 ollama serve，再拉取模型 ollama pull qwen2.5:3b-instruct），并把本网页用 http://localhost 打开才能调用。未连接时自动退回本地规则整理。录音与会议记录只保存在本设备（IndexedDB）。</p>
         <button class="primary-button" id="saveSettingsButton">保存设置</button>
       </div>
     </div>
