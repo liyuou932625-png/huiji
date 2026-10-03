@@ -43,6 +43,11 @@
           <div class="audio-result" id="audioResult" hidden>
             <audio id="audioPreview" controls></audio>
             <a class="audio-download" id="audioDownload" download="会议录音.webm">下载录音</a>
+            <div class="precise-row">
+              <button class="primary-button" id="preciseButton" disabled>AI 精准转写</button>
+              <span class="ai-status-chip off" id="preciseStatus"></span>
+            </div>
+            <p class="settings-note">浏览器转写只是实时预览；点「AI 精准转写」用本机模型重转，识别更准、自动分清说话人，再自动生成简短重点。</p>
           </div>
         </section>
         <section class="summary-section">
@@ -138,11 +143,16 @@
         <label class="setting-row"><span>自动保存历史</span><input id="autoSaveInput" type="checkbox" checked></label>
         <p class="settings-label">本地 AI（本机算力）</p>
         <label class="setting-row"><span>AI 状态</span><span class="ai-status" id="aiStatusLine">未检测</span></label>
-        <label class="setting-row"><span>Ollama 地址</span><input id="aiUrlInput" value="http://localhost:11434" spellcheck="false" placeholder="http://localhost:11434"></label>
+        <label class="setting-row"><span>Ollama 地址</span><input id="aiUrlInput" spellcheck="false" placeholder="留空 = 自动（推荐）"></label>
         <label class="setting-row"><span>模型</span><input id="aiModelInput" list="aiModelList" value="qwen2.5:3b-instruct" spellcheck="false"><datalist id="aiModelList"><option value="qwen2.5:3b-instruct"><option value="qwen2.5:7b"><option value="qwen2.5:1.5b"><option value="llama3.2:3b"></datalist></label>
         <label class="setting-row"><span>录音后自动 AI 总结</span><input id="aiAutoInput" type="checkbox" checked></label>
         <label class="setting-row"><span>重新检测</span><button class="small-button" id="aiCheckButton">检测 AI</button></label>
-        <p class="settings-note">AI 用本机 Ollama 的算力，数据不出本机。需安装并启动 Ollama（终端运行 ollama serve，再拉取模型 ollama pull qwen2.5:3b-instruct），并把本网页用 http://localhost 打开才能调用。未连接时自动退回本地规则整理。录音与会议记录只保存在本设备（IndexedDB）。</p>
+        <p class="settings-label">精准转写（本地语音识别）</p>
+        <label class="setting-row"><span>转写服务地址</span><input id="asrUrlInput" spellcheck="false" placeholder="留空 = 当前网页（推荐）"></label>
+        <label class="setting-row"><span>说话人数（可选）</span><input id="numSpeakersInput" type="number" min="1" max="12" placeholder="自动检测"></label>
+        <label class="setting-row"><span>转写后 AI 校错（更准，慢一些）</span><input id="asrCorrectInput" type="checkbox"></label>
+        <label class="setting-row"><span>录音后自动精准转写</span><input id="asrAutoInput" type="checkbox"></label>
+        <p class="settings-note">AI 用本机 Ollama 的算力，数据不出本机；地址留空时自动走本网页后端（手机端同样可用）。未连接时自动退回本地规则整理。精准转写用本机 FunASR + 说话人分离（CAM++），首次使用会自动下载模型（约 300MB，一次性）。「AI 校错」会用本机大模型修正识别错的同音字，更准但更慢。录音与会议记录只保存在本设备（IndexedDB）。</p>
         <button class="primary-button" id="saveSettingsButton">保存设置</button>
       </div>
     </div>

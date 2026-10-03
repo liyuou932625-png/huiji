@@ -124,6 +124,8 @@ h1 em { color: var(--blue); font-style: normal; }
 .transcript-item { display: grid; grid-template-columns: 30px 1fr; gap: 10px; }
 .speaker-avatar { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 50%; color: #fff; background: var(--blue); font-size: 11px; font-weight: 800; }
 .speaker-avatar.orange { background: var(--orange); }.speaker-avatar.green { background: var(--green); }
+.speaker-avatar.purple { background: #8b5cf6; }.speaker-avatar.teal { background: #14b8a6; }
+.precise-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
 .speaker-meta { display: flex; align-items: baseline; gap: 8px; margin-bottom: 5px; }.speaker-name { font-size: 12px; font-weight: 800; }.speaker-time { color: var(--muted); font-size: 10px; }.speaker-edit { padding: 0; border: 0; color: var(--ink); background: transparent; cursor: pointer; }
 .transcript-text { margin: 0; color: var(--ink-soft); font-size: 13px; line-height: 1.6; }
 .transcript-item.interim .transcript-text { color: var(--muted); opacity: .85; }

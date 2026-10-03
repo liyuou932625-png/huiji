@@ -22,6 +22,11 @@ else
   echo "✔ Ollama 已启动（模型：qwen2.5:3b-instruct）"
 fi
 
-# 2) 静态服务器（localhost 才是安全上下文，麦克风可用）
-echo "→ 启动网页服务 http://localhost:$PORT ..."
-exec python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$PWD"
+# 2) 网页 + 精准转写后端（localhost 才是安全上下文，麦克风可用）
+#    后端同时提供：静态网页 / Ollama 代理 / FunASR 精准转写（说话人分离）
+echo "→ 启动网页+转写服务 http://localhost:$PORT ..."
+if [ ! -x "$PWD/asr-venv/bin/python" ]; then
+  echo "⚠ 未找到 asr-venv，回退到纯静态服务器（无精准转写）"
+  exec python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$PWD"
+fi
+exec "$PWD/asr-venv/bin/python" "$PWD/asr_server.py"

@@ -1,50 +1,51 @@
 # 会记
 
-手机会议记录网页，支持录音、实时转写、会议重点整理和重点图片导出。
+手机会议记录网页：录音 → **精准转写（说话人分离）** → AI 断句校错 → **简短总结 + 行动项** → 保存/导出。全部用本机算力。
 
 ## 功能
 
-- 录音 + 实时转写（Web Speech API）
-- 会议全文整理：自动加标点、去口语填充词（本地 AI 优先，无 AI 时规则兜底）
-- 会议重点总结：**用简洁的话概括，不照搬原文**（本地 AI 生成；无 AI 时用关键词启发式兜底）
+- 录音 + 实时转写（浏览器 Web Speech，实时预览）
+- **AI 精准转写**（FunASR SeACo-Paraformer，中文 CER ≈ 2%）：识别更准
+- **说话人分离**（CAM++）：自动分清几位说话人、谁在说什么（测试双人对话 100% 分对）
+- **AI 校错**：用本机大模型修正识别错的同音字（「会以」→「会议」）
+- 会议全文整理：AI 断句加标点、去口语填充词（无 AI 时规则兜底）
+- 会议重点总结：**用简洁的话概括，不照搬原文**（本地 AI 生成）
 - 行动项提取、重点图片导出、Markdown/TXT 导出
 - 历史归档（IndexedDB 本地保存，含录音回放）
 
-## 本地 AI（可选，用本机算力）
-
-AI 通过 [Ollama](https://ollama.com) 跑在**本机**，数据不出设备。当前仓库自带 Ollama 运行时（`ollama-runtime/`，免 root 绿色版），用法：
+## 启动
 
 ```bash
-# 1. 启动 Ollama 服务（后台常驻）
-OLLAMA_MODELS=ollama-runtime/models OLLAMA_ORIGINS="*" OLLAMA_HOST=127.0.0.1:11434 \
-  ollama-runtime/bin/ollama serve
-
-# 2. 拉取模型（已下载 qwen2.5-3b-instruct-q4_k_m.gguf 时用本地创建代替）
-ollama-runtime/bin/ollama pull qwen2.5:3b-instruct
-
-# 3. 本地静态服务器打开本页（localhost 才是安全上下文，麦克风可用）
-python3 -m http.server 8000 --directory .
+./start.sh   # 一键：Ollama（AI 总结/校错）+ 网页与转写后端（端口 8000）
 # 浏览器打开 http://localhost:8000
 ```
 
-然后到「设置」里点「检测 AI」，即可使用「AI 整理全文」和「AI 总结」。
+后端（`asr_server.py`）同时提供：静态网页、Ollama 代理（`/api/tags`、`/api/chat`，手机端也能用 AI）、
+精准转写任务（`POST /api/transcribe` + 轮询）。首次精准转写会自动下载 FunASR 模型（约 1.3GB，一次性，缓存于 `asr-models/`）。
 
-> 提示：默认模型 `qwen2.5:3b-instruct` 在纯 CPU 上约 15-25 token/s；追求更好效果可在设置里换成 `qwen2.5:7b`（更慢）。
-> 手机浏览器打开时（非 localhost）无法访问本机 Ollama，会自动退回本地规则整理。
-
-## 手机版（可安装 App，无需大模型）
-
-用 cloudflared 免费隧道给本页开一条公网 HTTPS 地址，手机直接打开、加到主屏幕即可当 App 用（录音/转写/保存/导出全部可用；无 AI 时自动用规则断句 + 启发式总结）。
+环境准备（一次性）：
 
 ```bash
-# 一键启动：本地网页 + 公网隧道，打印手机地址和二维码
-./phone.sh
+uv python install 3.12
+uv venv asr-venv --python 3.12
+uv pip install --python asr-venv/bin/python --index-url https://download.pytorch.org/whl/cpu torch torchaudio
+uv pip install --python asr-venv/bin/python funasr modelscope soundfile scikit-learn flask "scipy>=1.11"
+# 应用聚类性能补丁（skill 自带）
+./asr-venv/bin/python asr-scripts/patch_clustering.py --yes
 ```
 
-- 手机浏览器打开打印出的 `https://xxx.trycloudflare.com` → 菜单里「添加到主屏幕」（iOS Safari：分享→添加到主屏幕；Android Chrome：右上角菜单→安装应用/添加到主屏幕）
-- 生成二维码：`tools/phone-qr.png`（脚本每次运行都会刷新）
-- 注意：免费隧道的地址是**临时的**，`cloudflared` 一重启地址就变（重新跑 `./phone.sh` 拿新地址）。要长期固定地址，把本目录部署到 GitHub Pages / Netlify / Vercel 即可（部署版自动无 AI、用规则整理）。
+## 手机版（可安装 App）
 
-## 发布
+```bash
+./phone.sh   # 本机服务 + cloudflared 隧道，打印手机地址和二维码
+```
 
-这是静态网页项目，可直接部署到 GitHub Pages、Netlify 或 Vercel（部署版不带本机 AI，AI 功能需通过 localhost 使用）。
+手机打开隧道地址 → 添加到主屏幕。**手机端同样可用精准转写和 AI 总结**（后端代理 Ollama，地址留空自动走同源）。
+
+> 注意：免费隧道地址是临时的，`cloudflared` 重启后跑 `./phone.sh` 拿新地址。
+
+## 模型与依赖来源
+
+转写管线来自 [zxkane/audio-transcriber](https://github.com/zxkane/audio-transcriber) skill（FunASR + CAM++），
+会议纪要/导出格式参考 [shalomb/agent-skills](https://github.com/shalomb/agent-skills) meeting-notes，
+PWA 策略参考 [jwynia/agent-skills](https://github.com/jwynia/agent-skills) pwa-development。

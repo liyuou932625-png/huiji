@@ -30,7 +30,7 @@ const state = {
   speakers: ["人物 1", "人物 2", "人物 3"],
   speakerIndex: 1,
   recogFatal: false,           // 识别权限被拒后不再自动重启
-  settings: { language: "zh-CN", autoSave: true, darkMode: null, aiUrl: "http://localhost:11434", aiModel: "qwen2.5:3b-instruct", aiAuto: true },
+  settings: { language: "zh-CN", autoSave: true, darkMode: null, aiUrl: "", aiModel: "qwen2.5:3b-instruct", aiAuto: true, asrUrl: "", asrAuto: false, numSpeakers: "", asrCorrect: false },
 };
 
 /* ---------------- 工具函数 ---------------- */
@@ -69,6 +69,10 @@ function loadSettings() {
   $("#aiUrlInput").value = state.settings.aiUrl;
   $("#aiModelInput").value = state.settings.aiModel;
   $("#aiAutoInput").checked = state.settings.aiAuto;
+  $("#asrUrlInput").value = state.settings.asrUrl;
+  $("#asrAutoInput").checked = state.settings.asrAuto;
+  $("#asrCorrectInput").checked = state.settings.asrCorrect;
+  $("#numSpeakersInput").value = state.settings.numSpeakers;
   ai.url = state.settings.aiUrl;
   ai.model = state.settings.aiModel;
   applyDark();
@@ -82,9 +86,13 @@ function saveSettings() {
     autoSave: $("#autoSaveInput").checked,
     darkMode: state.settings.darkMode,
     defaultSpeaker: state.speakers[0],
-    aiUrl: $("#aiUrlInput").value.trim() || "http://localhost:11434",
+    aiUrl: $("#aiUrlInput").value.trim() || "",
     aiModel: $("#aiModelInput").value.trim() || ai.model,
     aiAuto: $("#aiAutoInput").checked,
+    asrUrl: $("#asrUrlInput").value.trim() || "",
+    asrAuto: $("#asrAutoInput").checked,
+    asrCorrect: $("#asrCorrectInput").checked,
+    numSpeakers: $("#numSpeakersInput").value.trim(),
   };
   ai.url = state.settings.aiUrl;
   ai.model = state.settings.aiModel;
@@ -268,13 +276,16 @@ function ensureFullText() {
 /* ============================================================
  * 本地 AI（Ollama，本机算力）
  * ============================================================ */
-const ai = { url: "http://localhost:11434", model: "qwen2.5:3b-instruct", available: false, checking: false, busy: false, busyLabel: "" };
+const ai = { url: "", model: "qwen2.5:3b-instruct", available: false, checking: false, busy: false, busyLabel: "" };
+
+/* AI 服务地址：空 = 同源代理（后端 /api/tags、/api/chat 转发到本机 Ollama，手机端也能用） */
+function aiBase() { return (ai.url || "").trim() || location.origin; }
 
 async function llmFetch(path, body, timeoutMs = 180000) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(ai.url + path, {
+    const res = await fetch(aiBase() + path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -311,7 +322,7 @@ async function checkAi() {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 5000);
   try {
-    const res = await fetch(ai.url + "/api/tags", { signal: ctrl.signal });
+    const res = await fetch(aiBase() + "/api/tags", { signal: ctrl.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     ai.available = true;
@@ -442,6 +453,99 @@ function maybeAutoAi() {
     await aiPunctuateFull({ silent: true });
     await aiSummarize({ silent: true });
     showToast("AI 已整理全文并生成总结");
+  })();
+}
+
+/* ============================================================
+ * 精准转写（本地 FunASR + CAM++ 说话人分离，异步任务）
+ * 识别更准、能分清几位说话人；结果替换逐条记录后再做 AI 整理总结
+ * ============================================================ */
+function asrBase() { return (state.settings.asrUrl || "").trim() || location.origin; }
+
+function lastLine(s) {
+  const lines = String(s || "").split("\n").filter(Boolean);
+  return lines[lines.length - 1] || "";
+}
+
+function updatePreciseUi(busy, label) {
+  const btn = $("#preciseButton");
+  const status = $("#preciseStatus");
+  if (btn) {
+    btn.disabled = busy || !state.audioBlob;
+    btn.textContent = busy ? "精准转写中…" : "AI 精准转写";
+  }
+  if (status) {
+    if (busy || label) { status.textContent = label || ""; status.className = "ai-status-chip busy"; }
+    else { status.textContent = ""; status.className = "ai-status-chip off"; }
+  }
+}
+
+async function startPreciseTranscription() {
+  if (!state.audioBlob) { showToast("还没有录音音频，先录一段"); return; }
+  if (state.preciseBusy) return;
+  state.preciseBusy = true;
+  updatePreciseUi(true, "上传录音…");
+  try {
+    const form = new FormData();
+    const ext = state.audioBlob.type.includes("mp4") ? "mp4" : "webm";
+    form.append("file", state.audioBlob, `meeting.${ext}`);
+    form.append("lang", "zh");
+    if (state.settings.numSpeakers) form.append("num_speakers", state.settings.numSpeakers);
+    if (state.settings.asrCorrect) form.append("correct", "1");
+    const res = await fetch(asrBase() + "/api/transcribe", { method: "POST", body: form });
+    if (!res.ok) throw new Error(`上传失败（HTTP ${res.status}）`);
+    const { job_id } = await res.json();
+    if (!job_id) throw new Error("没有拿到任务号");
+    for (;;) {
+      const r2 = await fetch(asrBase() + "/api/transcribe/" + job_id);
+      const st = await r2.json();
+      if (st.status === "done") {
+        applyPreciseSegments(st.segments);
+        showToast(`精准转写完成：识别到 ${st.speakers} 位说话人`);
+        return;
+      }
+      if (st.status === "error") throw new Error(lastLine(st.error) || "转写失败");
+      updatePreciseUi(true, "转写中：" + lastLine(st.progress));
+      await new Promise((r) => setTimeout(r, 2500));
+    }
+  } catch (e) {
+    showToast("精准转写失败：" + (e.message || "未知错误"));
+  } finally {
+    state.preciseBusy = false;
+    updatePreciseUi(false, "");
+  }
+}
+
+function applyPreciseSegments(segments) {
+  if (!segments || !segments.length) { showToast("没有识别到文字，请检查录音音量"); return; }
+  const colorCycle = ["", "orange", "green", "purple", "teal"];
+  state.transcript = segments.map((s) => ({
+    speaker: `人物 ${s.speaker}`,
+    initial: String(s.speaker),
+    color: colorCycle[(s.speaker - 1) % colorCycle.length],
+    text: s.text,
+    time: formatTime(Math.floor((s.start_ms || 0) / 1000)),
+  }));
+  state.interimText = "";
+  state.aiSummary = null;
+  state.fullText = fallbackPunctuate(rawFullText());
+  renderTranscript();
+  renderFullText();
+  renderSummary();
+  if (state.currentId) persistMeeting().then(() => renderHistory());
+  (async () => {
+    if (ai.available) {
+      try {
+        await aiPunctuateFull({ silent: true });
+        await aiSummarize({ silent: true });
+        showToast("已用 AI 整理全文并生成简短总结");
+      } catch {}
+    } else {
+      state.fullText = fallbackPunctuate(rawFullText());
+      renderFullText();
+      renderSummary();
+      showToast("本机 AI 未连接：已用规则断句（可在设置里检测 AI）");
+    }
   })();
 }
 
@@ -753,6 +857,7 @@ function saveCurrentMeeting() {
   const payload = meetingPayload();
   if (state.audioBlob) {
     dbPut("audio", { id: payload.id, blob: state.audioBlob }).catch(() => {});
+    updatePreciseUi(false, "");
   }
   if (state.settings.autoSave && state.transcript.length) {
     dbPut("meetings", payload).then(() => { renderHistory(); showToast("录音、文字和会议重点已保存"); }).catch(() => {});
@@ -760,6 +865,10 @@ function saveCurrentMeeting() {
     showToast("录音已保存，但没有识别到文字，可手动添加记录");
   }
   // 保留 currentId：之后 AI 整理/总结会更新同一条记录，避免重复
+  // 录音停止后自动精准转写（可关）
+  if (state.settings.asrAuto && state.audioBlob && !state.recording && !state.preciseBusy) {
+    setTimeout(() => startPreciseTranscription(), 500);
+  }
 }
 
 /* ---------------- 历史 ---------------- */
@@ -1018,8 +1127,9 @@ $("#copyFullTextButton").addEventListener("click", () => {
 
 $("#aiSummaryButton").addEventListener("click", () => aiSummarize());
 $("#aiPunctuateButton").addEventListener("click", () => aiPunctuateFull());
+$("#preciseButton").addEventListener("click", () => startPreciseTranscription());
 $("#aiCheckButton").addEventListener("click", async () => {
-  ai.url = $("#aiUrlInput").value.trim() || "http://localhost:11434";
+  ai.url = $("#aiUrlInput").value.trim() || "";
   await checkAi();
   showToast(ai.available ? `AI 已连接（${ai.model}）` : "未检测到 Ollama，请确认已启动");
 });
