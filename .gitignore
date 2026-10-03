@@ -15,3 +15,8 @@ asr-models/
 .asr-jobs/
 test-voices/
 *.flac
+
+# 构建辅助与字节码
+asr-overrides.txt
+__pycache__/
+*.pyc
