@@ -792,6 +792,7 @@ async function startRecording() {
     };
     state.recording = true;
     state.startedAt = Date.now();
+    markPending(state.currentId);   // 标记进行中：退出后可提示恢复草稿
     renderTranscript();
     renderSummary();
     updateRecordingUi();
@@ -870,6 +871,7 @@ function saveCurrentMeeting() {
   if (state.settings.autoSave) {
     dbPut("meetings", payload)
       .then(() => {
+        clearPending();   // 正常结束已入库，撤销"未完成"标记
         renderHistory();
         showToast(state.transcript.length ? "录音、文字和会议重点已保存" : "录音已保存（没有识别到文字，可重新转写）");
       })
@@ -1156,6 +1158,7 @@ $("#clearButton").addEventListener("click", () => {
   state.fullText = "";
   state.aiSummary = null;
   state.currentId = null;
+  clearPending();
   $("#recordTime").textContent = "00:00";
   $("#audioResult").hidden = true;
   renderTranscript(); renderFullText(); renderSummary();
@@ -1257,6 +1260,45 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+/* ---------------- 未完成录音的草稿恢复 ----------------
+ * 录音开始时打标记（localStorage），正常结束/清空/恢复/放弃时清除。
+ * 启动时若发现标记，提示用户恢复上次的文字草稿（音频无法保存）。
+ */
+const PENDING_KEY = "huiji-pending";
+function markPending(id) { try { localStorage.setItem(PENDING_KEY, String(id)); } catch {} }
+function clearPending() { try { localStorage.removeItem(PENDING_KEY); } catch {} }
+function getPending() { try { return localStorage.getItem(PENDING_KEY) || null; } catch { return null; } }
+
+async function maybeResumeDraft() {
+  const pid = getPending();
+  if (!pid) return;
+  try {
+    const all = await listMeetings();
+    const item = all.find((m) => String(m.id) === String(pid));
+    if (!item) { clearPending(); return; }   // 草稿已被删，清掉标记
+    const n = (item.transcript || []).length;
+    $("#resumeInfo").textContent = n
+      ? `上次录音「${item.title}」有 ${n} 条文字（${item.duration}），音频未保存。要恢复到当前编辑吗？`
+      : `上次录音「${item.title}」（${item.duration}）只保存了草稿，没有文字。要恢复吗？`;
+    $("#resumeModal").hidden = false;
+    state.resumeId = pid;
+  } catch {}
+}
+
+$("#resumeYesButton").addEventListener("click", () => {
+  if (state.resumeId) loadHistory(state.resumeId);
+  clearPending();
+  $("#resumeModal").hidden = true;
+  showToast("已恢复上次的会议草稿");
+});
+$("#resumeNoButton").addEventListener("click", async () => {
+  if (state.resumeId) await deleteMeeting(state.resumeId);
+  clearPending();
+  state.resumeId = null;
+  $("#resumeModal").hidden = true;
+  showToast("已放弃上次的草稿");
+});
+
 /* ---------------- 初始化 ---------------- */
 const now = new Date();
 const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
@@ -1269,3 +1311,4 @@ renderSummary();
 renderHistory();
 migrateOldHistory();
 checkAi();
+maybeResumeDraft();

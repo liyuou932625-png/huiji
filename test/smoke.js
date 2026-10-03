@@ -152,7 +152,7 @@ const src = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
 (async () => {
   try {
     // 严格模式 eval 的声明不外泄，追加一行探针把要测的符号挂到全局
-    (0, eval)(src + "\n;globalThis.__probe = { $, state, fallbackPunctuate, buildMinutes, renderHistory, saveCurrentMeeting };");
+    (0, eval)(src + "\n;globalThis.__probe = { $, state, fallbackPunctuate, buildMinutes, renderHistory, saveCurrentMeeting, maybeResumeDraft, markPending, getPending };");
     // 等初始化里的异步（renderHistory / checkAi）settle
     await new Promise((r) => setTimeout(r, 50));
     const P = globalThis.__probe;
@@ -174,6 +174,23 @@ const src = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
       P.saveCurrentMeeting();
       await new Promise((r) => setTimeout(r, 40));
       return DB_DATA.meetings.length > before && DB_DATA.meetings.some((m) => m.title === "无文字会议A");
+    }]);
+    // 5) 未完成录音草稿：启动提示恢复，放弃则删除草稿并清标记
+    tests.push(["未完成草稿可提示恢复/放弃", async () => {
+      // 造一条草稿 + 打进行中标记
+      DB_DATA.meetings.push({ id: "draft-1", title: "草稿会议", date: "2026年10月4日", time: "10:00", duration: "03:00", created: Date.now(), transcript: [{ speaker: "人物 1", time: "00:01", text: "测试" }] });
+      P.markPending("draft-1");
+      await P.maybeResumeDraft();
+      await new Promise((r) => setTimeout(r, 40));
+      if (P.$("#resumeModal").hidden !== false) return false;   // 应弹出提示
+      if (P.getPending() !== "draft-1") return false;
+      // 点「放弃」
+      const noBtn = P.$("#resumeNoButton");
+      const handler = (noBtn.listeners && noBtn.listeners.click && noBtn.listeners.click[0]);
+      if (!handler) return false;
+      await handler();
+      await new Promise((r) => setTimeout(r, 60));
+      return P.getPending() === null && !DB_DATA.meetings.some((m) => m.id === "draft-1");
     }]);
 
     let failed = 0;
