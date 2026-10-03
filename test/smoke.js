@@ -64,6 +64,7 @@ const fakeDoc = {
   },
   querySelectorAll: () => [],
   createElement: () => fakeEl(),
+  addEventListener: () => {},
   documentElement: { classList: fakeClassList() },
   body: { appendChild: () => {} },
 };
@@ -151,7 +152,7 @@ const src = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
 (async () => {
   try {
     // 严格模式 eval 的声明不外泄，追加一行探针把要测的符号挂到全局
-    (0, eval)(src + "\n;globalThis.__probe = { $, state, fallbackPunctuate, buildMinutes, renderHistory };");
+    (0, eval)(src + "\n;globalThis.__probe = { $, state, fallbackPunctuate, buildMinutes, renderHistory, saveCurrentMeeting };");
     // 等初始化里的异步（renderHistory / checkAi）settle
     await new Promise((r) => setTimeout(r, 50));
     const P = globalThis.__probe;
@@ -166,10 +167,18 @@ const src = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
       const t = P.buildMinutes({ title: "测试会", date: "2026年10月3日", time: "10:00", duration: "05:00", summary: null, fullText: "全文。", transcript: [{ speaker: "人物 1", time: "00:01", text: "确认发布" }] });
       return t.includes("## 执行摘要") && t.includes("## 行动项") && t.includes("参会人：人物 1");
     }]);
+    // 4) 没有识别到文字时，保存也会入库（历史里总有记录，不丢失）
+    tests.push(["无文字也保存到历史", async () => {
+      const before = DB_DATA.meetings.length;
+      P.$("#meetingTitle").value = "无文字会议A";
+      P.saveCurrentMeeting();
+      await new Promise((r) => setTimeout(r, 40));
+      return DB_DATA.meetings.length > before && DB_DATA.meetings.some((m) => m.title === "无文字会议A");
+    }]);
 
     let failed = 0;
     for (const [name, fn] of tests) {
-      try { if (fn()) console.log("  ✓", name); else { console.error("  ✗", name); failed++; } }
+      try { if (await fn()) console.log("  ✓", name); else { console.error("  ✗", name); failed++; } }
       catch (e) { console.error("  ✗", name, "->", e.message); failed++; }
     }
     if (failed) { console.error("SMOKE_FAIL: 有断言未通过"); process.exit(1); }

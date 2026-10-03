@@ -796,6 +796,12 @@ async function startRecording() {
     renderSummary();
     updateRecordingUi();
     state.timer = setInterval(() => { $("#recordTime").textContent = formatTime(Math.floor((Date.now() - state.startedAt) / 1000)); }, 1000);
+    // 录音中每 5 秒自动保存草稿：即使中途退出/被杀，最多丢几秒文字
+    state.autosaveTimer = setInterval(() => {
+      if (state.recording && state.transcript.length && state.settings.autoSave) {
+        dbPut("meetings", meetingPayload()).catch(() => {});
+      }
+    }, 5000);
     recorder.start();
     if (setupSpeechRecognition()) {
       try { state.recognition.start(); } catch {}
@@ -836,6 +842,7 @@ function persistMeeting() {
 function stopRecording() {
   state.recording = false;
   clearInterval(state.timer);
+  clearInterval(state.autosaveTimer);
   state.interimText = "";
   if (state.recognition) {
     try { state.recognition.stop(); } catch {}
@@ -859,8 +866,14 @@ function saveCurrentMeeting() {
     dbPut("audio", { id: payload.id, blob: state.audioBlob }).catch(() => {});
     updatePreciseUi(false, "");
   }
-  if (state.settings.autoSave && state.transcript.length) {
-    dbPut("meetings", payload).then(() => { renderHistory(); showToast("录音、文字和会议重点已保存"); }).catch(() => {});
+  // 只要开启自动保存就无条件入库：即使没有识别到文字，会议（含录音）也在历史里
+  if (state.settings.autoSave) {
+    dbPut("meetings", payload)
+      .then(() => {
+        renderHistory();
+        showToast(state.transcript.length ? "录音、文字和会议重点已保存" : "录音已保存（没有识别到文字，可重新转写）");
+      })
+      .catch(() => {});
   } else if (!state.transcript.length) {
     showToast("录音已保存，但没有识别到文字，可手动添加记录");
   }
@@ -1224,12 +1237,23 @@ navigator.serviceWorker?.addEventListener("controllerchange", () => {
   // 新版 SW 已接管（skipWaiting + clients.claim），下次请求即新版资源
 });
 
-/* ---------------- 录音中离开页面提醒 ---------------- */
+/* ---------------- 录音中离开页面：尽力保存 + 提醒 ---------------- */
 window.addEventListener("beforeunload", (e) => {
   if (state.recording) {
+    // 尽力把当前文字落库（配合 5 秒自动保存，最多丢几秒）
+    try {
+      if (state.transcript.length && state.settings.autoSave) dbPut("meetings", meetingPayload()).catch(() => {});
+    } catch {}
     e.preventDefault();
     e.returnValue = "";
     return "";
+  }
+});
+
+// 手机切后台/关闭 PWA 时（visibilitychange 先于 unload 触发）也保存一次
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && state.transcript.length && state.settings.autoSave && state.currentId) {
+    dbPut("meetings", meetingPayload()).catch(() => {});
   }
 });
 
