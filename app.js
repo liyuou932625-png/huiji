@@ -29,6 +29,7 @@ const state = {
   currentTitle: "",
   speakers: ["人物 1", "人物 2", "人物 3"],
   speakerIndex: 1,
+  recogFatal: false,           // 识别权限被拒后不再自动重启
   settings: { language: "zh-CN", autoSave: true, darkMode: null, aiUrl: "http://localhost:11434", aiModel: "qwen2.5:3b-instruct", aiAuto: true },
 };
 
@@ -613,6 +614,7 @@ function setupSpeechRecognition() {
   rec.onerror = (e) => {
     if (e.error === "no-speech") return;
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      state.recogFatal = true;   // 权限被拒后不再自动重启，避免死循环
       showToast("麦克风权限被拒绝，请在浏览器设置中允许");
     } else if (e.error === "network") {
       showToast("语音识别网络异常，录音仍会继续");
@@ -621,7 +623,7 @@ function setupSpeechRecognition() {
     }
   };
   rec.onend = () => {
-    if (state.recording) {
+    if (state.recording && !state.recogFatal) {
       try { rec.start(); } catch {}
     }
   };
@@ -667,6 +669,7 @@ async function startRecording() {
     state.interimText = "";
     state.fullText = "";
     state.aiSummary = null;
+    state.recogFatal = false;
     state.currentId = uid();
     state.currentTitle = `会议 · ${formatDate()} ${formatClock()}`;
     $("#meetingTitle").value = state.currentTitle;
@@ -763,16 +766,20 @@ function saveCurrentMeeting() {
 function renderHistory() {
   listMeetings().then((items) => {
     $("#historyList").innerHTML = items.length
-      ? items.map((m) => `
-          <button class="history-item" data-id="${m.id}">
-            <strong>${escapeHtml(m.title || m.summary.oneLine)}</strong>
-            <span>${escapeHtml(m.date)} ${escapeHtml(m.time)} · ${m.duration} · ${m.transcript.length} 条记录</span>
+      ? items.map((m) => {
+          const title = m.title || (m.summary && m.summary.oneLine) || `会议 · ${m.date || ""}`;
+          const n = (m.transcript || []).length;
+          return `
+          <button class="history-item" data-id="${escapeHtml(m.id)}">
+            <strong>${escapeHtml(title)}</strong>
+            <span>${escapeHtml(m.date || "")} ${escapeHtml(m.time || "")} · ${escapeHtml(m.duration || "00:00")} · ${n} 条记录</span>
             <span class="history-actions">
               <span class="chip" data-action="detail">详情</span>
               <span class="chip" data-action="export">导出</span>
               <span class="chip danger" data-action="delete">删除</span>
             </span>
-          </button>`).join("")
+          </button>`;
+        }).join("")
       : '<div class="empty-state history-empty">还没有保存的会议</div>';
   });
 }
@@ -802,7 +809,7 @@ async function openHistoryDetail(id) {
   if (!m) return;
   const s = m.summary || buildSummary(m.transcript || []);
   $("#detailTitle").textContent = m.title || `会议 · ${m.date}`;
-  $("#detailMeta").textContent = `${m.date} ${m.time} · 时长 ${m.duration} · ${(m.transcript || []).length} 条`;
+  $("#detailMeta").textContent = `${m.date} ${m.time || ""} · 时长 ${m.duration || "00:00"} · ${(m.transcript || []).length} 条`;
   const fullText = (m.fullText || "").trim() || fallbackPunctuate((m.transcript || []).map((t) => t.text).join(" "));
   $("#detailFullText").innerHTML = fullText
     ? `<p style="white-space:pre-wrap">${escapeHtml(fullText)}</p>`
@@ -829,29 +836,49 @@ async function openHistoryDetail(id) {
   state.detailId = id;
 }
 
-function currentExportText() {
-  const s = getSummary();
-  const fullText = (state.fullText || "").trim();
+/* 参会人（按转写中出现顺序去重） */
+function meetingAttendees(transcript) {
+  const seen = [];
+  (transcript || []).forEach((t) => { if (t.speaker && !seen.includes(t.speaker)) seen.push(t.speaker); });
+  return seen.join("、") || "未标注";
+}
+
+/* 统一生成专业会议纪要（meeting-notes 规范：头部/执行摘要/决定/行动项/完整记录） */
+function buildMinutes({ title, date, time, duration, summary, fullText, transcript }) {
+  const s = summary || buildSummary(transcript || []);
+  const full = (fullText || "").trim() || fallbackPunctuate((transcript || []).map((t) => t.text).join(" "));
   const lines = [
-    `# ${$("#meetingTitle").value.trim() || "会议记录"}`,
+    `# ${title || "会议记录"}`,
     "",
-    `日期：${formatDate()} ${formatClock()}`,
+    `- 日期：${date || ""} ${time || ""} · 时长：${duration || "--"} · 参会人：${meetingAttendees(transcript)}`,
     "",
-    "## 一句话总结",
+    "## 执行摘要",
     s.oneLine,
     "",
-    "## 行动项",
-    ...(s.actions.length ? s.actions.map((a) => `- ${a}`) : ["- 无"]),
-    "",
-    "## 关键内容",
+    "## 关键决定 / 内容",
     ...(s.points.length ? s.points.map((p, i) => `${i + 1}. ${p}`) : ["- 无"]),
+    "",
+    "## 行动项",
+    ...(s.actions.length ? s.actions.map((a) => `- [ ] ${a}`) : ["- 无"]),
   ];
-  if (fullText) {
-    lines.push("", "## 完整记录（整理后）", "", fullText, "");
+  if (full) {
+    lines.push("", "## 完整记录（整理后）", "", full, "");
   }
   lines.push("", "## 逐条记录");
-  lines.push(...state.transcript.map((t) => `**${t.speaker}**（${t.time}）：${t.text}`));
+  lines.push(...(transcript || []).map((t) => `**${t.speaker}**（${t.time}）：${t.text}`));
   return lines.join("\n");
+}
+
+function currentExportText() {
+  return buildMinutes({
+    title: $("#meetingTitle").value.trim(),
+    date: formatDate(),
+    time: formatClock(),
+    duration: $("#recordTime").textContent,
+    summary: getSummary(),
+    fullText: state.fullText,
+    transcript: state.transcript,
+  });
 }
 
 function downloadText(filename, text) {
@@ -877,29 +904,17 @@ function exportHistoryItem(id, format) {
   listMeetings().then((all) => {
     const m = all.find((x) => String(x.id) === String(id));
     if (!m) return;
-    const s = m.summary || buildSummary(m.transcript || []);
-    const fullText = (m.fullText || "").trim() || fallbackPunctuate((m.transcript || []).map((t) => t.text).join(" "));
-    const lines = [
-      `# ${m.title || `会议 · ${m.date}`}`,
-      "",
-      `日期：${m.date} ${m.time} · 时长 ${m.duration}`,
-      "",
-      "## 一句话总结",
-      s.oneLine,
-      "",
-      "## 行动项",
-      ...(s.actions.length ? s.actions.map((a) => `- ${a}`) : ["- 无"]),
-      "",
-      "## 关键内容",
-      ...(s.points.length ? s.points.map((p, i) => `${i + 1}. ${p}`) : ["- 无"]),
-    ];
-    if (fullText) {
-      lines.push("", "## 完整记录（整理后）", "", fullText, "");
-    }
-    lines.push("", "## 逐条记录");
-    lines.push(...(m.transcript || []).map((t) => `**${t.speaker}**（${t.time}）：${t.text}`));
+    const text = buildMinutes({
+      title: m.title,
+      date: m.date,
+      time: m.time,
+      duration: m.duration,
+      summary: m.summary,
+      fullText: m.fullText,
+      transcript: m.transcript,
+    });
     const base = (m.title || `会议-${m.date}`).replace(/[\\/:*?"<>|]/g, "-");
-    downloadText(`${base}.${format}`, lines.join("\n"));
+    downloadText(`${base}.${format}`, text);
     showToast(`已导出 ${format.toUpperCase()} 文件`);
   });
 }
@@ -1080,8 +1095,24 @@ $("#installButton").addEventListener("click", async () => {
   $("#installButton").hidden = true;
 });
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js"));
+  window.addEventListener("load", async () => {
+    try {
+      const reg = await navigator.serviceWorker.register("sw.js");
+      reg.addEventListener("updatefound", () => {
+        const sw = reg.installing;
+        if (!sw) return;
+        sw.addEventListener("statechange", () => {
+          if (sw.state === "installed" && navigator.serviceWorker.controller) {
+            showToast("新版已就绪，刷新一次即可生效");
+          }
+        });
+      });
+    } catch {}
+  });
 }
+navigator.serviceWorker?.addEventListener("controllerchange", () => {
+  // 新版 SW 已接管（skipWaiting + clients.claim），下次请求即新版资源
+});
 
 /* ---------------- 录音中离开页面提醒 ---------------- */
 window.addEventListener("beforeunload", (e) => {
