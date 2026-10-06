@@ -99,6 +99,7 @@ function saveSettings() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.settings));
   updateSpeakerLabel();
   updateAiUi();
+  checkBackend();   // 地址改了立刻重探电脑在线状态
 }
 
 /* ---------------- IndexedDB（会议 + 音频） ---------------- */
@@ -277,6 +278,29 @@ function ensureFullText() {
  * 本地 AI（Ollama，本机算力）
  * ============================================================ */
 const ai = { url: "", model: "qwen2.5:3b-instruct", available: false, checking: false, busy: false, busyLabel: "" };
+let backendOnline = null;  // 电脑后端是否在线（null=检测中）
+let ollamaOnline = false;  // 后端代理的 Ollama 是否就绪
+
+/* 探测电脑后端在线状态（后端 /api/health 返回 {ok, ollama}） */
+async function checkBackend() {
+  backendOnline = null;
+  ollamaOnline = false;
+  updateAiUi();
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch(asrBase() + "/api/health", { signal: ctrl.signal });
+    clearTimeout(timer);
+    backendOnline = res.ok;
+    try {
+      const data = await res.json();
+      ollamaOnline = !!data.ollama;
+    } catch { ollamaOnline = false; }
+  } catch {
+    backendOnline = false;
+  }
+  updateAiUi();
+}
 
 /* AI 服务地址：空 = 同源代理（后端 /api/tags、/api/chat 转发到本机 Ollama，手机端也能用） */
 function aiBase() { return (ai.url || "").trim() || location.origin; }
@@ -343,8 +367,13 @@ async function checkAi() {
 function updateAiUi() {
   const chip = $("#aiStatus");
   const line = $("#aiStatusLine");
-  const stateName = ai.checking ? "busy" : (ai.available ? "on" : "off");
-  const label = ai.checking ? "AI 检测中…" : ai.busy ? (ai.busyLabel || "AI 处理中…") : ai.available ? "AI 已连接" : "AI 未连接";
+  let label = "AI 未连接";
+  let stateName = "off";
+  if (ai.checking) { label = "AI 检测中…"; stateName = "busy"; }
+  else if (ai.available || ollamaOnline) { label = "AI 已连接"; stateName = "on"; }
+  else if (ai.busy) { label = ai.busyLabel || "AI 处理中…"; stateName = "busy"; }
+  else if (backendOnline === true) { label = "电脑在线，AI 未启动"; stateName = "off"; }
+  else if (backendOnline === false) { label = (state.settings.asrUrl || ai.url) ? "电脑未在线（仅基础功能）" : "未配置电脑地址"; stateName = "off"; }
   if (chip) { chip.textContent = label; chip.className = `ai-status-chip ${stateName}`; }
   if (line) { line.textContent = label; line.className = `ai-status ${stateName}`; }
   const sumBtn = $("#aiSummaryButton");
@@ -1311,4 +1340,5 @@ renderSummary();
 renderHistory();
 migrateOldHistory();
 checkAi();
+checkBackend();
 maybeResumeDraft();
