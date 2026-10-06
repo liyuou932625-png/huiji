@@ -1,10 +1,10 @@
-/* 会记 Service Worker v11
+/* 会记 Service Worker v12
  * 策略（pwa-development 规范）：
  *  - 文档（导航）请求：网络优先，失败回退缓存 → 刷新即拿到新版
  *  - 静态资源：缓存优先，未命中走网络并顺手入缓存
  *  - skipWaiting + clients.claim：新版本一次刷新即生效
  */
-const CACHE = "huiji-v11";
+const CACHE = "huiji-v12";
 const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", (event) => {

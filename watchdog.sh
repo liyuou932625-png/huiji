@@ -50,6 +50,8 @@ while true; do
     if [ -n "$U" ]; then
       echo "$U" > "$BASE/tools/current-url.txt"
       log "新隧道地址: $U"
+      # 发布到 GitHub 供手机自动发现
+      bash "$BASE/tools/publish-url.sh"
       # 顺带刷新二维码
       if [ -f "$BASE/tools/phone-qr.png" ]; then
         PYTHONPATH=/home/liyuou/dsh/.pylibs "$VENV_PY" - <<PY 2>/dev/null || true

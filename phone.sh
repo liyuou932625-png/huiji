@@ -66,6 +66,9 @@ if ! pgrep -f "watchdog.sh" >/dev/null 2>&1; then
   echo "✔ 看护进程已启动（watchdog）"
 fi
 
+# 5) 把当前地址发布到 GitHub（手机端自动发现，无需手动填地址）
+bash "$PWD/tools/publish-url.sh"
+
 echo ""
 echo "=============================================="
 echo " 手机版地址（HTTPS，添加到主屏幕即 App）："

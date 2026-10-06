@@ -100,6 +100,7 @@ function saveSettings() {
   updateSpeakerLabel();
   updateAiUi();
   checkBackend();   // 地址改了立刻重探电脑在线状态
+  fetchAutoBackend();
 }
 
 /* ---------------- IndexedDB（会议 + 音频） ---------------- */
@@ -280,6 +281,24 @@ function ensureFullText() {
 const ai = { url: "", model: "qwen2.5:3b-instruct", available: false, checking: false, busy: false, busyLabel: "" };
 let backendOnline = null;  // 电脑后端是否在线（null=检测中）
 let ollamaOnline = false;  // 后端代理的 Ollama 是否就绪
+let autoBackendUrl = "";   // 从永久链接 backend-url.txt 自动发现的电脑地址
+
+/* 从永久链接（同源 backend-url.txt）自动发现电脑当前地址——地址变了也不用手动改 */
+async function fetchAutoBackend() {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch(location.origin + "/backend-url.txt", { signal: ctrl.signal, cache: "no-cache" });
+    clearTimeout(timer);
+    if (!res.ok) return;
+    const url = (await res.text()).trim().replace(/\/+$/, "");
+    if (/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(url)) {
+      autoBackendUrl = url;
+      checkBackend();
+      checkAi();
+    }
+  } catch {}
+}
 
 /* 探测电脑后端在线状态（后端 /api/health 返回 {ok, ollama}） */
 async function checkBackend() {
@@ -302,8 +321,8 @@ async function checkBackend() {
   updateAiUi();
 }
 
-/* AI 服务地址：空 = 同源代理（后端 /api/tags、/api/chat 转发到本机 Ollama，手机端也能用） */
-function aiBase() { return (ai.url || "").trim() || location.origin; }
+/* AI 服务地址：空 = 自动发现电脑地址（backend-url.txt）→ 同源代理 */
+function aiBase() { return (ai.url || "").trim() || autoBackendUrl || location.origin; }
 
 async function llmFetch(path, body, timeoutMs = 180000) {
   const ctrl = new AbortController();
@@ -373,7 +392,8 @@ function updateAiUi() {
   else if (ai.available || ollamaOnline) { label = "AI 已连接"; stateName = "on"; }
   else if (ai.busy) { label = ai.busyLabel || "AI 处理中…"; stateName = "busy"; }
   else if (backendOnline === true) { label = "电脑在线，AI 未启动"; stateName = "off"; }
-  else if (backendOnline === false) { label = (state.settings.asrUrl || ai.url) ? "电脑未在线（仅基础功能）" : "未配置电脑地址"; stateName = "off"; }
+  else if (backendOnline === null) { label = "检测电脑连接…"; stateName = "busy"; }
+  else if (backendOnline === false) { label = "电脑未在线（仅基础功能）"; stateName = "off"; }
   if (chip) { chip.textContent = label; chip.className = `ai-status-chip ${stateName}`; }
   if (line) { line.textContent = label; line.className = `ai-status ${stateName}`; }
   const sumBtn = $("#aiSummaryButton");
@@ -489,7 +509,7 @@ function maybeAutoAi() {
  * 精准转写（本地 FunASR + CAM++ 说话人分离，异步任务）
  * 识别更准、能分清几位说话人；结果替换逐条记录后再做 AI 整理总结
  * ============================================================ */
-function asrBase() { return (state.settings.asrUrl || "").trim() || location.origin; }
+function asrBase() { return (state.settings.asrUrl || "").trim() || autoBackendUrl || location.origin; }
 
 function lastLine(s) {
   const lines = String(s || "").split("\n").filter(Boolean);
@@ -1341,4 +1361,5 @@ renderHistory();
 migrateOldHistory();
 checkAi();
 checkBackend();
+fetchAutoBackend();
 maybeResumeDraft();
