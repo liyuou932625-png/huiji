@@ -36,13 +36,23 @@ uv pip install --python asr-venv/bin/python funasr modelscope soundfile scikit-l
 
 ## 手机版（可安装 App）
 
+**永久链接（推荐）**：<https://liyuou932625-png.github.io/huiji/>
+
+- 由 GitHub Pages 托管，**永久免费、不会失效**（二维码 `tools/pages-qr.png`）
+- 手机打开 → 添加到主屏幕 = 桌面应用（独立于浏览器，关标签页不影响）
+- 基础功能（录音/浏览器转写/规则整理/历史/导出）永久可用，**历史存在手机本地**（IndexedDB）
+- **启用本机 AI / 精准转写**：在设置里把「AI 地址」和「转写服务地址」都填成电脑的隧道地址
+  （电脑上跑 `./phone.sh` 得到，见下）
+
+**电脑本机算力版（临时隧道）**：
+
 ```bash
-./phone.sh   # 本机服务 + cloudflared 隧道，打印手机地址和二维码
+./phone.sh   # 一键：Ollama + 网页/转写后端 + 公网隧道 + 看护（自动恢复）
 ```
 
-手机打开隧道地址 → 添加到主屏幕。**手机端同样可用精准转写和 AI 总结**（后端代理 Ollama，地址留空自动走同源）。
-
-> 注意：免费隧道地址是临时的，`cloudflared` 重启后跑 `./phone.sh` 拿新地址。
+- 打印的 `https://xxx.trycloudflare.com` 是临时地址，看护进程会在失效时自动换新并刷新 `tools/current-url.txt` 和 `tools/phone-qr.png`
+- 手机填到设置里即可用 AI 精准转写（说话人分离）/ AI 校错 / AI 总结
+- 注意：免费隧道地址是临时的，电脑重启后跑一次 `./phone.sh` 即可
 
 ## 模型与依赖来源
 
